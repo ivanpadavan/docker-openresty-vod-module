@@ -1,11 +1,8 @@
-nginx-vod:
-  build: .
-  # image: alfg/nginx-vod-module
-  ports:
-    - 8080:80
-  environment:
-    - PORT=80
-    - AWS_ACCESS_KEY=
-    - AWS_SIGNING_KEY=
-    - AWS_KEY_SCOPE=
-    - AWS_S3_BUCKET=
+services:
+  nginx-vod:
+    build: .
+    ports:
+      - 8080:80
+    volumes:
+      - ./videos:/opt/static/videos/
+      - ./nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf

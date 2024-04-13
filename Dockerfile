@@ -1,50 +1,33 @@
-FROM alpine:3.13
+FROM alpine:3.8 AS base_image
 
-ENV NGINX_VERSION 1.19.7
-ENV NGINX_VOD_MODULE_VERSION 1.27
+FROM base_image AS build
 
-# Tempfix until auth module fixed
-ENV NGINX_AWS_AUTH_VERSION 2.1.1-patch-04062021
+RUN apk add --no-cache curl build-base openssl openssl-dev zlib-dev linux-headers pcre-dev ffmpeg ffmpeg-dev perl
+RUN mkdir openresty nginx-vod-module
 
-EXPOSE 80
+ENV OPENRESTY_VERSION 1.25.3.1
+ENV VOD_MODULE_VERSION 1.33
 
-RUN apk add --no-cache wget ca-certificates build-base openssl openssl-dev zlib-dev linux-headers pcre-dev ffmpeg ffmpeg-dev gettext
+RUN curl -sL https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz | tar -C /openresty --strip 1 -xz
+RUN curl -sL https://github.com/kaltura/nginx-vod-module/archive/${VOD_MODULE_VERSION}.tar.gz | tar -C /nginx-vod-module --strip 1 -xz
 
-# Get nginx source.
-RUN wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
-  && tar zxf nginx-${NGINX_VERSION}.tar.gz \
-  && rm nginx-${NGINX_VERSION}.tar.gz
 
-# Get nginx vod module.
-RUN wget https://github.com/kaltura/nginx-vod-module/archive/${NGINX_VOD_MODULE_VERSION}.tar.gz \
-  && tar zxf ${NGINX_VOD_MODULE_VERSION}.tar.gz \
-  && rm ${NGINX_VOD_MODULE_VERSION}.tar.gz
+WORKDIR /openresty
+RUN ./configure \
+  -j2 --with-pcre-jit --with-ipv6 \
+	--add-module=../nginx-vod-module \
+	--with-http_ssl_module \
+	--with-file-aio \
+	--with-threads \
+	--with-cc-opt="-O3"
+RUN make -j2
+RUN make install
 
-# Get nginx aws auth module.
-RUN wget https://github.com/alfg/ngx_aws_auth/archive/${NGINX_AWS_AUTH_VERSION}.tar.gz \
-  && tar zxf ${NGINX_AWS_AUTH_VERSION}.tar.gz \
-  && rm ${NGINX_AWS_AUTH_VERSION}.tar.gz
+# RUN rm -rf /usr/local/openresty/html /usr/local/openresty/conf/*.default
 
-# Compile nginx with nginx-vod-module.
-RUN cd nginx-${NGINX_VERSION} \
-  && ./configure \
-  --prefix=/usr/local/nginx \
-  --add-module=../nginx-vod-module-${NGINX_VOD_MODULE_VERSION} \
-  --add-module=../ngx_aws_auth-${NGINX_AWS_AUTH_VERSION} \
-  --conf-path=/usr/local/nginx/conf/nginx.conf \
-  --with-file-aio \
-  --error-log-path=/opt/nginx/logs/error.log \
-  --http-log-path=/opt/nginx/logs/access.log \
-  --with-threads \
-  --with-cc-opt="-O3" \
-  --with-debug
-RUN cd nginx-${NGINX_VERSION} && make && make install
-
-COPY nginx.remote.conf /usr/local/nginx/conf/nginx.conf.template
-
-# Cleanup.
-RUN rm -rf /var/cache/* /tmp/*
-
-CMD /bin/sh -c "envsubst < /usr/local/nginx/conf/nginx.conf.template > \
-  /usr/local/nginx/conf/nginx.conf && \
-  /usr/local/nginx/sbin/nginx -g 'daemon off;'"
+FROM base_image
+RUN apk add --no-cache ca-certificates openssl pcre zlib ffmpeg
+RUN apk add --no-cache perl
+COPY --from=build /usr/local/openresty /usr/local/openresty
+ENTRYPOINT ["/usr/local/openresty/bin/openresty"]
+CMD ["-g", "daemon off;"]
