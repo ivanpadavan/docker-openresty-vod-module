@@ -10,7 +10,8 @@ ENV VOD_MODULE_VERSION 1.33
 
 RUN curl -sL https://openresty.org/download/openresty-${OPENRESTY_VERSION}.tar.gz | tar -C /openresty --strip 1 -xz
 RUN curl -sL https://github.com/kaltura/nginx-vod-module/archive/${VOD_MODULE_VERSION}.tar.gz | tar -C /nginx-vod-module --strip 1 -xz
-
+# turn on experimental mkv support
+RUN cd /nginx-vod-module && sed -i 's/\/\/ XXXXX add //g' ngx_http_vod_module.c
 
 WORKDIR /openresty
 RUN ./configure \
@@ -26,8 +27,7 @@ RUN make install
 # RUN rm -rf /usr/local/openresty/html /usr/local/openresty/conf/*.default
 
 FROM base_image
-RUN apk add --no-cache ca-certificates openssl pcre zlib ffmpeg
-RUN apk add --no-cache perl
+RUN apk add --no-cache ca-certificates openssl pcre zlib ffmpeg perl
 COPY --from=build /usr/local/openresty /usr/local/openresty
 ENTRYPOINT ["/usr/local/openresty/bin/openresty"]
 CMD ["-g", "daemon off;"]
